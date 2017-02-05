@@ -189,12 +189,18 @@ func (k3 Kite3) ZMin() float64 {
 
 // Intersect returns whether a ray intersects this kite
 func (k3 Kite3) Intersect(r R3) (bool, Hit) {
+	bounds := k3.Image.Bounds()
+	w := float64(bounds.Max.X - bounds.Min.X)
+	h := float64(bounds.Max.Y - bounds.Min.Y)
 	uvToColor := func(u, v float64) color.Color {
 		//		if u > 0.5 || v > 0.5 {
 		//		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
-		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
+		//return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
 		//return color.NRGBA{R: 128, G: 0, B: 0, A: 255}
 		//		return k3.Image.At(0, 0)
+		x := bounds.Min.X + int(w*u)
+		y := bounds.Min.Y + int(h*v)
+		return k3.Image.At(x, y)
 		//		}
 		//		return color.Black
 	}
@@ -444,6 +450,17 @@ func (ppp PPiped) Items() []Item {
 func MakeScene() *Scene {
 	scene := New(-100, 5)
 
+	f, err := os.Open("zac.png")
+	if err != nil {
+		log.Fatalf("Failed to open zac png")
+	}
+	defer f.Close()
+	zac, err := png.Decode(f)
+	if err != nil {
+		log.Fatalf("Failed to decode zac png")
+	}
+	defer f.Close()
+
 	/*
 		t := T3{
 			A: P3{X: 0, Y: 0, Z: 0},
@@ -453,17 +470,19 @@ func MakeScene() *Scene {
 
 		scene.Add(t)
 	*/
-	red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
 	blue := color.NRGBA{R: 0, G: 0, B: 128, A: 255}
-
 	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5, image.NewUniform(blue))
 	scene.AddItems(torus)
+
+	// red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	//	ppImg := image.NewUniform(red),
+	ppImg := zac
 	ppiped := PPiped{
 		Corner: P3{-10, 0, 0},
 		E1:     P3{2, 2, 2},
 		E2:     P3{1, -10, 0},
 		E3:     P3{-10, -3, 2},
-		Image:  image.NewUniform(red),
+		Image:  ppImg,
 	}
 	scene.AddItems(ppiped)
 	scene.AddLight(Light{At: P3{-50, 50, 50}, Colour: color.White})
