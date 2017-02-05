@@ -120,8 +120,8 @@ func (t3 T3) Intersect(r R3) (bool, Hit) {
 // and the the U-V co-ords in the triangle if true (and position)
 func (t3 T3) IntersectUV(r R3) (bool, float64, float64, P3) {
 	// Triangle edges sharing A
-	e1 := t3.B.Sub(t3.A)
-	e2 := t3.C.Sub(t3.A)
+	e1 := t3.A.Sub(t3.C)
+	e2 := t3.B.Sub(t3.C)
 
 	// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 	// Determinant
@@ -133,7 +133,7 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64, P3) {
 	}
 	invDet := 1.0 / det
 	//calculate distance from A to ray origin
-	T := r.At.Sub(t3.A)
+	T := r.At.Sub(t3.C)
 
 	//Calculate u parameter and test bound
 	u := T.Dot(P) * invDet
@@ -155,7 +155,7 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64, P3) {
 	if t > Epsilon {
 		// Bingo
 		// u and v are the AB and AC co-ordinates and sum to 1
-		return true, u, v, t3.A.Add(e1.Scale(u)).Add(e2.Scale(v))
+		return true, u, v, t3.C.Add(e1.Scale(u)).Add(e2.Scale(v))
 	}
 	return false, 0, 0, Origin
 }
@@ -192,8 +192,9 @@ func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 	uvToColor := func(u, v float64) color.Color {
 		//		if u > 0.5 || v > 0.5 {
 		//		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
+		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
 		//return color.NRGBA{R: 128, G: 0, B: 0, A: 255}
-		return k3.Image.At(0, 0)
+		//		return k3.Image.At(0, 0)
 		//		}
 		//		return color.Black
 	}
@@ -205,6 +206,7 @@ func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 		return hit, Hit{p, k3.TA.normal(), uvToColor(u, v)}
 	}
 	hit, u, v, p = k3.TB.IntersectUV(r)
+	u, v = 1-v, 1-u
 	if hit {
 		return hit, Hit{p, k3.TB.normal(), uvToColor(u, v)}
 	}
