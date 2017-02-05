@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"sort"
 )
@@ -15,9 +17,33 @@ type P3 struct {
 	X, Y, Z float64
 }
 
-// Add returns a new point, the sum
+// Add adds two vectors
 func (p P3) Add(q P3) P3 {
 	return P3{X: p.X + q.X, Y: p.Y + q.Y, Z: p.Z + q.Z}
+}
+
+// Sub subtracts two vectors
+func (p P3) Sub(q P3) P3 {
+	return P3{X: p.X - q.X, Y: p.Y - q.Y, Z: p.Z - q.Z}
+}
+
+// Len returns the length of a vector
+func (p P3) Len(q P3) float64 {
+	return math.Sqrt(p.X*p.X + p.Y*p.Y + p.Z*p.Z)
+}
+
+// Dot returns the dot product of two vectors
+func (p P3) Dot(q P3) float64 {
+	return (p.X*q.X + p.Y*q.Y + p.Z*q.Z)
+}
+
+// Cross returns the cross product of two vectors
+func (p P3) Cross(q P3) P3 {
+	return P3{
+		X: p.Y*q.Z - p.Z*q.Y,
+		Y: p.Z*q.X - p.X*q.Z,
+		Z: p.X*q.Y - p.Y*q.X,
+	}
 }
 
 // R3 is a ray - it has a 3d location and a 3d direction
@@ -45,7 +71,45 @@ func (t3 T3) ZFront() float64 {
 
 // Intersect returns whether a ray intersects this triangle
 func (t3 T3) Intersect(r R3) (bool, color.Color) {
-	return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	// Triangle edges sharing A
+	e1 := t3.B.Sub(t3.A)
+	e2 := t3.C.Sub(t3.A)
+
+	// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+	// Determinant
+	P := r.Dir.Cross(e2)
+	det := P.Dot(e1)
+	epsilon := 1e-9
+	if math.Abs(det) < epsilon {
+		// Parallel
+		return false, nil
+	}
+	invDet := 1.0 / det
+	//calculate distance from A to ray origin
+	T := r.At.Sub(t3.A)
+
+	//Calculate u parameter and test bound
+	u := T.Dot(P) * invDet
+	//The intersection lies outside of the triangle
+	if u < 0 || u > 1 {
+		return false, nil
+	}
+	//Prepare to test v parameter
+	Q := T.Cross(e1)
+
+	//Calculate V parameter and test bound
+	v := r.Dir.Dot(Q) * invDet
+	//The intersection lies outside of the triangle
+	if v < 0 || u+v > 1 {
+		return false, nil
+	}
+
+	t := e2.Dot(Q) * invDet
+	if t > epsilon {
+		// Bingo
+		return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	}
+	return false, nil
 }
 
 // An Item is something visible which can be added to a scene
@@ -71,25 +135,40 @@ func (isa itemSlice) Swap(i, j int) {
 
 // Scene contains the items, lighting and viewport
 type Scene struct {
-	viewer      R3
-	viewport    image.Rectangle
+	viewerDist  float64
+	screenDist  float64
 	sortedItems []Item
 }
 
 // New returns a new Scene
-func New(viewer R3, viewport image.Rectangle) *Scene {
+func New(viewerDist float64, screenDist float64) *Scene {
 	return &Scene{
-		viewer:   viewer,
-		viewport: viewport,
+		viewerDist: viewerDist,
+		screenDist: screenDist,
 	}
 }
 
-// Render returns the colour at the x,y co-ords of the viewport
-func (s *Scene) Render(x, y int) color.Color {
-	xf := float64(x) / float64(s.viewport.Max.X)
-	yf := float64(y) / float64(s.viewport.Max.Y)
-	red := uint8(256 * xf / (yf + 0.01))
-	return color.NRGBA{R: red, G: 0, B: 0, A: 255}
+var hits int
+
+// Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> 0, 0)
+func (s *Scene) Render(x, y float64) color.Color {
+	ray := R3{
+		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
+		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
+	}
+	for _, item := range s.sortedItems {
+		intersects, colour := item.Intersect(ray)
+		if intersects {
+			hits++
+			return colour
+		}
+	}
+	return s.ambient(ray)
+}
+
+func (s *Scene) ambient(r R3) color.Color {
+	//	red := uint8(10000 * (r.Dir.X / (r.Dir.Y + 1)))
+	return color.NRGBA{R: 0, G: 0, B: 0, A: 255}
 }
 
 // Add an item to the Scene
@@ -99,17 +178,13 @@ func (s *Scene) Add(i Item) {
 }
 
 // MakeScene constructs our test scene
-func MakeScene(viewport image.Rectangle) *Scene {
-	viewer := R3{
-		At:  P3{0, 0, -100},
-		Dir: P3{0, 0, 1},
-	}
-	scene := New(viewer, viewport)
+func MakeScene() *Scene {
+	scene := New(-100, 5)
 
 	t := T3{
 		A: P3{X: 0, Y: 0, Z: 0},
-		B: P3{X: 0, Y: 0, Z: 0},
-		C: P3{X: 0, Y: 0, Z: 0},
+		B: P3{X: 10, Y: 0, Z: 0},
+		C: P3{X: 0, Y: 10, Z: 0},
 	}
 
 	scene.Add(t)
@@ -123,14 +198,17 @@ func main() {
 	i := image.NewRGBA(screenSize)
 	draw.Draw(i, screenSize, image.White, image.Point{}, draw.Over)
 
-	scene := MakeScene(screenSize)
+	scene := MakeScene()
 
 	for x := 0; x < width; x++ {
 		for y := 0; y < height; y++ {
-			colour := scene.Render(x, y)
+			xf := float64(x)/float64(width)*2 - 1.0
+			yf := float64(y)/float64(height)*2 - 1.0
+			colour := scene.Render(xf, yf)
 			i.Set(x, y, colour)
 		}
 	}
+	fmt.Printf("HITS %d\n", hits)
 
 	fname := "tt.png"
 	f, err := os.Create(fname)
