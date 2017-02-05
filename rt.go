@@ -17,6 +17,12 @@ type P3 struct {
 	X, Y, Z float64
 }
 
+// Origin is the 0, 0, 0 point
+var Origin P3
+
+// Epsilon is our small value
+var Epsilon = 1e-6
+
 // Add adds two vectors
 func (p P3) Add(q P3) P3 {
 	return P3{X: p.X + q.X, Y: p.Y + q.Y, Z: p.Z + q.Z}
@@ -28,13 +34,30 @@ func (p P3) Sub(q P3) P3 {
 }
 
 // Len returns the length of a vector
-func (p P3) Len(q P3) float64 {
+func (p P3) Len() float64 {
 	return math.Sqrt(p.X*p.X + p.Y*p.Y + p.Z*p.Z)
+}
+
+// Normalise returns a unit vector in the same direction
+func (p P3) Normalise() P3 {
+	l := p.Len()
+	return P3{X: p.X / l, Y: p.Y / l, Z: p.Z / l}
+}
+
+// Scale scales the vector
+func (p P3) Scale(s float64) P3 {
+	return P3{X: p.X * s, Y: p.Y * s, Z: p.Z * s}
 }
 
 // Dot returns the dot product of two vectors
 func (p P3) Dot(q P3) float64 {
 	return (p.X*q.X + p.Y*q.Y + p.Z*q.Z)
+}
+
+// Component returns the component of q in the p direction
+func (p P3) Component(q P3) P3 {
+	s := p.Dot(q) / p.Len()
+	return p.Normalise().Scale(s)
 }
 
 // Cross returns the cross product of two vectors
@@ -79,8 +102,7 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	// Determinant
 	P := r.Dir.Cross(e2)
 	det := P.Dot(e1)
-	epsilon := 1e-9
-	if math.Abs(det) < epsilon {
+	if math.Abs(det) < Epsilon {
 		// Parallel
 		return false, nil
 	}
@@ -105,9 +127,47 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	}
 
 	t := e2.Dot(Q) * invDet
-	if t > epsilon {
+	if t > Epsilon {
 		// Bingo
 		return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	}
+	return false, nil
+}
+
+// Kite3 is a 2d kite
+type Kite3 struct {
+	TA, TB T3
+}
+
+// NewKite3 returns a kite with opposite corners A and B, and C+C' (C' reflected in AB)
+func NewKite3(A, B, C P3) *Kite3 {
+	CA := A.Sub(C)
+	CB := B.Sub(C)
+	C2 := C.Add(CA).Add(CB)
+	return &Kite3{
+		TA: T3{A, B, C},
+		TB: T3{A, B, C2},
+	}
+}
+
+// ZFront is the nearest part of the item to Z
+func (k3 Kite3) ZFront() float64 {
+	z := k3.TA.ZFront()
+	if k3.TB.ZFront() < z {
+		z = k3.TB.ZFront()
+	}
+	return z
+}
+
+// Intersect returns whether a ray intersects this kite
+func (k3 Kite3) Intersect(r R3) (bool, color.Color) {
+	yes, colour := k3.TA.Intersect(r)
+	if yes {
+		return yes, colour
+	}
+	yes, colour = k3.TB.Intersect(r)
+	if yes {
+		return yes, colour
 	}
 	return false, nil
 }
@@ -118,6 +178,13 @@ type Item interface {
 	Intersect(r R3) (bool, color.Color)
 }
 
+// An ItemSource is an object which knows how to decompose itself
+// into items, suitable for adding to the scene
+type ItemSource interface {
+	Items() []Item
+}
+
+// Sorting interface crud
 type itemSlice []Item
 
 func (isa itemSlice) Len() int {
@@ -177,17 +244,100 @@ func (s *Scene) Add(i Item) {
 	sort.Sort(itemSlice(s.sortedItems))
 }
 
+// AddItems asks an ItemSource for the items it wants to add to the scene
+func (s *Scene) AddItems(is ItemSource) {
+	for _, i := range is.Items() {
+		s.Add(i)
+	}
+}
+
+// Disc is an ItemSource
+type Disc struct {
+	centre    P3
+	axis      P3
+	inner     float64
+	thickness float64
+}
+
+// NewDisc constructs a Disc
+func NewDisc(centre P3, axis P3, inner float64, thickness float64) *Disc {
+	return &Disc{centre: centre, axis: axis.Normalise(), inner: inner, thickness: thickness}
+}
+
+// Circle is a helper type which can calculate points on its circumference
+type Circle struct {
+	centre P3
+	axis   P3
+	radius float64
+}
+
+// Points returns the requested number of evenly-spaced points on the circle
+func (c *Circle) Points(steps int) []P3 {
+	v := P3{1, 0, 0}
+	if v.Dot(c.axis) < Epsilon {
+		// Too close to parallel, choose another starting vector
+		v = P3{0, 1, 0}
+	}
+
+	// A radius vector
+	rx := c.axis.Cross(v).Normalise().Scale(c.radius)
+	// A perpendicular radius vector
+	ry := c.axis.Cross(rx).Normalise().Scale(c.radius)
+	fmt.Printf("rx %v ry %v\n", rx, ry)
+
+	pi2 := math.Pi * 2.0
+	var points []P3
+	for theta := 0.0; theta < pi2; theta += pi2 / float64(steps) {
+		r := rx.Scale(math.Cos(theta)).Add(ry.Scale(math.Sin(theta)))
+		points = append(points, c.centre.Add(r))
+	}
+	return points
+}
+
+// Items returns a set of triangles to represent the disc
+func (d *Disc) Items() []Item {
+	var items []Item
+
+	numSteps := 5
+	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner}
+	innerPoints := innerCircle.Points(numSteps)
+	outerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner + d.thickness}
+	outerPoints := outerCircle.Points(numSteps)
+
+	for i := 0; i < numSteps; i++ {
+		//		nextInner := innerPoints[(i+1)%numSteps]
+		//		nextOuter := outerPoints[(i+1)%numSteps]
+		/*		t := T3{
+					A: innerPoints[i],
+					B: outerPoints[i],
+					C: outerPoints[i].Add(d.axis.Scale(d.thickness)),
+				}
+		*/
+		k := NewKite3(innerPoints[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
+
+		items = append(items, k)
+
+	}
+
+	return items
+}
+
 // MakeScene constructs our test scene
 func MakeScene() *Scene {
 	scene := New(-100, 5)
 
-	t := T3{
-		A: P3{X: 0, Y: 0, Z: 0},
-		B: P3{X: 10, Y: 0, Z: 0},
-		C: P3{X: 0, Y: 10, Z: 0},
-	}
+	/*
+		t := T3{
+			A: P3{X: 0, Y: 0, Z: 0},
+			B: P3{X: 10, Y: 0, Z: 0},
+			C: P3{X: 0, Y: 10, Z: 0},
+		}
 
-	scene.Add(t)
+		scene.Add(t)
+	*/
+	disc := NewDisc(P3{X: 5, Y: 5, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 10, 10)
+	scene.AddItems(disc)
+
 	return scene
 }
 
