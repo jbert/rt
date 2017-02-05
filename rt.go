@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -342,7 +341,6 @@ func (c *Circle) Points(steps int) []P3 {
 	rx := c.axis.Cross(v).Normalise().Scale(c.radius)
 	// A perpendicular radius vector
 	ry := c.axis.Cross(rx).Normalise().Scale(c.radius)
-	fmt.Printf("rx %v ry %v\n", rx, ry)
 
 	pi2 := math.Pi * 2.0
 	var points []P3
@@ -357,25 +355,68 @@ func (c *Circle) Points(steps int) []P3 {
 func (d *Torus) Items() []Item {
 	var items []Item
 
-	numSteps := 10
-	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
-	pts := innerCircle.Points(numSteps)
+	numMajorSteps := 16
+	numMinorSteps := 8
+	circle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
+	pts := circle.Points(numMajorSteps)
 
-	for i := 0; i < numSteps; i++ {
+	for i := 0; i < numMajorSteps; i++ {
 		pt := pts[i]
-		rv := pt.Sub(d.centre).Normalise().Scale(d.thickness)
-		av := d.axis.Scale(d.thickness)
+		rv := pt.Sub(d.centre).Normalise()
+		interiorAxis := rv.Cross(d.axis)
+		minorCircle := Circle{centre: pt, axis: interiorAxis, radius: d.thickness / 2}
+		pts := minorCircle.Points(numMinorSteps)
 
-		nextPt := pts[(i+1)%numSteps]
-		//		nextRv := nextPt.Sub(d.centre)
+		nextPt := pts[(i+1)%numMinorSteps]
+		nextRv := nextPt.Sub(d.centre).Normalise()
+		nextAxis := nextRv.Cross(d.axis)
+		nextMinorCircle := Circle{centre: nextPt, axis: nextAxis, radius: d.thickness / 2}
+		nextPts := nextMinorCircle.Points(numMinorSteps)
 
-		//		k := NewKite3(innerPoints[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
-		items = append(items, NewKite3(pt.Add(rv), nextPt.Add(av), pt.Add(av)))
-		items = append(items, NewKite3(pt.Add(av), nextPt.Sub(rv), pt.Sub(rv)))
-		items = append(items, NewKite3(pt.Sub(rv), nextPt.Sub(av), pt.Sub(av)))
-		items = append(items, NewKite3(pt.Sub(av), nextPt.Add(rv), pt.Add(rv)))
+		for j := 0; j < numMinorSteps; j++ {
+			k := NewKite3(pts[j], nextPts[(j+1)%numMinorSteps], pts[(j+1)%numMinorSteps])
+			items = append(items, k)
+		}
+
+		/*
+			av := d.axis.Scale(d.thickness)
+
+			nextPt := pts[(i+1)%numSteps]
+			//		nextRv := nextPt.Sub(d.centre)
+
+			//		k := NewKite3(circle[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
+			items = append(items, NewKite3(pt.Add(rv), nextPt.Add(av), pt.Add(av)))
+			items = append(items, NewKite3(pt.Add(av), nextPt.Sub(rv), pt.Sub(rv)))
+			items = append(items, NewKite3(pt.Sub(rv), nextPt.Sub(av), pt.Sub(av)))
+			items = append(items, NewKite3(pt.Sub(av), nextPt.Add(rv), pt.Add(rv)))
+		*/
 
 	}
+
+	return items
+}
+
+// PPiped is a parallelopipd
+type PPiped struct {
+	Corner     P3
+	E1, E2, E3 P3
+}
+
+// Items returns a set of items to represent the PPiped
+func (ppp PPiped) Items() []Item {
+	var items []Item
+
+	blf := ppp.Corner
+
+	items = append(items, NewKite3(blf, blf.Add(ppp.E1).Add(ppp.E2), blf.Add(ppp.E1)))
+	items = append(items, NewKite3(blf, blf.Add(ppp.E2).Add(ppp.E3), blf.Add(ppp.E2)))
+	items = append(items, NewKite3(blf, blf.Add(ppp.E3).Add(ppp.E1), blf.Add(ppp.E3)))
+
+	trb := ppp.Corner.Add(ppp.E1).Add(ppp.E2).Add(ppp.E3)
+
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E1).Sub(ppp.E2), trb.Sub(ppp.E1)))
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E2).Sub(ppp.E3), trb.Sub(ppp.E2)))
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E3).Sub(ppp.E1), trb.Sub(ppp.E3)))
 
 	return items
 }
@@ -393,8 +434,14 @@ func MakeScene() *Scene {
 
 		scene.Add(t)
 	*/
-	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 15, 3)
-	scene.AddItems(torus)
+	//	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5)
+	ppiped := PPiped{
+		Corner: P3{0, 0, 0},
+		E1:     P3{2, 2, 2},
+		E2:     P3{1, -10, 0},
+		E3:     P3{-10, -3, 2},
+	}
+	scene.AddItems(ppiped)
 	scene.AddLight(Light{At: P3{-50, 50, 50}, Colour: color.White})
 
 	return scene
