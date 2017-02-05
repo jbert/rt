@@ -94,6 +94,16 @@ func (t3 T3) ZFront() float64 {
 
 // Intersect returns whether a ray intersects this triangle
 func (t3 T3) Intersect(r R3) (bool, color.Color) {
+	hit, u, v := t3.IntersectUV(r)
+	if !hit {
+		return false, nil
+	}
+	return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}
+}
+
+// IntersectUV returns true/false for an intercept
+// and the the U-V co-ords in the triangle if true
+func (t3 T3) IntersectUV(r R3) (bool, float64, float64) {
 	// Triangle edges sharing A
 	e1 := t3.B.Sub(t3.A)
 	e2 := t3.C.Sub(t3.A)
@@ -104,7 +114,7 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	det := P.Dot(e1)
 	if math.Abs(det) < Epsilon {
 		// Parallel
-		return false, nil
+		return false, 0, 0
 	}
 	invDet := 1.0 / det
 	//calculate distance from A to ray origin
@@ -114,7 +124,7 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	u := T.Dot(P) * invDet
 	//The intersection lies outside of the triangle
 	if u < 0 || u > 1 {
-		return false, nil
+		return false, 0, 0
 	}
 	//Prepare to test v parameter
 	Q := T.Cross(e1)
@@ -123,16 +133,16 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	v := r.Dir.Dot(Q) * invDet
 	//The intersection lies outside of the triangle
 	if v < 0 || u+v > 1 {
-		return false, nil
+		return false, 0, 0
 	}
 
 	t := e2.Dot(Q) * invDet
 	if t > Epsilon {
 		// Bingo
 		// u and v are the AB and AC co-ordinates and sum to 1
-		return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}
+		return true, u, v
 	}
-	return false, nil
+	return false, 0, 0
 }
 
 // Kite3 is a 2d kite
@@ -162,13 +172,23 @@ func (k3 Kite3) ZFront() float64 {
 
 // Intersect returns whether a ray intersects this kite
 func (k3 Kite3) Intersect(r R3) (bool, color.Color) {
-	yes, colour := k3.TA.Intersect(r)
-	if yes {
-		return yes, colour
+	uvToColor := func(u, v float64) color.Color {
+		if u > 0.5 || v > 0.5 {
+			return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
+		} else {
+			return color.Black
+		}
 	}
-	yes, colour = k3.TB.Intersect(r)
-	if yes {
-		return yes, colour
+
+	// Should only hit one triangle, so don't need to consider
+	// z-ordering
+	hit, u, v := k3.TA.IntersectUV(r)
+	if hit {
+		return hit, uvToColor(u, v)
+	}
+	hit, u, v = k3.TB.IntersectUV(r)
+	if hit {
+		return hit, uvToColor(u, v)
 	}
 	return false, nil
 }
@@ -299,7 +319,7 @@ func (c *Circle) Points(steps int) []P3 {
 func (d *Torus) Items() []Item {
 	var items []Item
 
-	numSteps := 30
+	numSteps := 10
 	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
 	pts := innerCircle.Points(numSteps)
 
