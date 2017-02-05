@@ -1,0 +1,7 @@
+#!/bin/sh
+while true
+do
+    inotifywait -e close_write . 
+    clear
+    golint . && go vet . && go run rt.go 
+done
