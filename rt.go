@@ -252,17 +252,17 @@ func (s *Scene) AddItems(is ItemSource) {
 	}
 }
 
-// Disc is an ItemSource
-type Disc struct {
+// Torus is an ItemSource
+type Torus struct {
 	centre    P3
 	axis      P3
-	inner     float64
+	radius    float64
 	thickness float64
 }
 
-// NewDisc constructs a Disc
-func NewDisc(centre P3, axis P3, inner float64, thickness float64) *Disc {
-	return &Disc{centre: centre, axis: axis.Normalise(), inner: inner, thickness: thickness}
+// NewTorus constructs a Torus
+func NewTorus(centre P3, axis P3, radius float64, thickness float64) *Torus {
+	return &Torus{centre: centre, axis: axis.Normalise(), radius: radius, thickness: thickness}
 }
 
 // Circle is a helper type which can calculate points on its circumference
@@ -295,28 +295,27 @@ func (c *Circle) Points(steps int) []P3 {
 	return points
 }
 
-// Items returns a set of triangles to represent the disc
-func (d *Disc) Items() []Item {
+// Items returns a set of items to represent the Torus
+func (d *Torus) Items() []Item {
 	var items []Item
 
-	numSteps := 10
-	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner}
-	innerPoints := innerCircle.Points(numSteps)
-	outerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner + d.thickness}
-	outerPoints := outerCircle.Points(numSteps)
+	numSteps := 30
+	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
+	pts := innerCircle.Points(numSteps)
 
 	for i := 0; i < numSteps; i++ {
-		//		nextInner := innerPoints[(i+1)%numSteps]
-		//		nextOuter := outerPoints[(i+1)%numSteps]
-		/*		t := T3{
-					A: innerPoints[i],
-					B: outerPoints[i],
-					C: outerPoints[i].Add(d.axis.Scale(d.thickness)),
-				}
-		*/
-		k := NewKite3(innerPoints[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
+		pt := pts[i]
+		rv := pt.Sub(d.centre).Normalise().Scale(d.thickness)
+		av := d.axis.Scale(d.thickness)
 
-		items = append(items, k)
+		nextPt := pts[(i+1)%numSteps]
+		//		nextRv := nextPt.Sub(d.centre)
+
+		//		k := NewKite3(innerPoints[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
+		items = append(items, NewKite3(pt.Add(rv), nextPt.Add(av), pt.Add(av)))
+		items = append(items, NewKite3(pt.Add(av), nextPt.Sub(rv), pt.Sub(rv)))
+		items = append(items, NewKite3(pt.Sub(rv), nextPt.Sub(av), pt.Sub(av)))
+		items = append(items, NewKite3(pt.Sub(av), nextPt.Add(rv), pt.Add(rv)))
 
 	}
 
@@ -336,8 +335,8 @@ func MakeScene() *Scene {
 
 		scene.Add(t)
 	*/
-	disc := NewDisc(P3{X: 5, Y: 5, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 10, 10)
-	scene.AddItems(disc)
+	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 15, 3)
+	scene.AddItems(torus)
 
 	return scene
 }
