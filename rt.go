@@ -79,8 +79,8 @@ type T3 struct {
 	A, B, C P3
 }
 
-// ZFront is the nearest part of the item to Z
-func (t3 T3) ZFront() float64 {
+// ZMin is the nearest part of the item to Z
+func (t3 T3) ZMin() float64 {
 	z := t3.A.Z
 	if t3.B.Z < z {
 		z = t3.B.Z
@@ -98,15 +98,22 @@ func (t3 T3) normal() P3 {
 	return e1.Cross(e2)
 }
 
+// Hit represents a ray hit on an item
+type Hit struct {
+	At     P3
+	Normal P3
+	Colour color.Color
+}
+
 // Intersect returns whether a ray intersects this triangle (and if so, the colour, position and normal)
-func (t3 T3) Intersect(r R3) (bool, color.Color, P3, P3) {
+func (t3 T3) Intersect(r R3) (bool, Hit) {
 	//	hit, u, v, p := t3.IntersectUV(r)
 	hit, _, _, p := t3.IntersectUV(r)
 	if !hit {
-		return false, nil, Origin, Origin
+		return false, Hit{}
 	}
 	//	return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}, p, t3.normal()
-	return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}, p, t3.normal()
+	return true, Hit{p, t3.normal(), color.NRGBA{R: 128, G: 0, B: 0, A: 255}}
 }
 
 // IntersectUV returns true/false for an intercept
@@ -169,17 +176,17 @@ func NewKite3(A, B, C P3) *Kite3 {
 	}
 }
 
-// ZFront is the nearest part of the item to Z
-func (k3 Kite3) ZFront() float64 {
-	z := k3.TA.ZFront()
-	if k3.TB.ZFront() < z {
-		z = k3.TB.ZFront()
+// ZMin is the nearest part of the item to Z
+func (k3 Kite3) ZMin() float64 {
+	z := k3.TA.ZMin()
+	if k3.TB.ZMin() < z {
+		z = k3.TB.ZMin()
 	}
 	return z
 }
 
 // Intersect returns whether a ray intersects this kite
-func (k3 Kite3) Intersect(r R3) (bool, color.Color, P3, P3) {
+func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 	uvToColor := func(u, v float64) color.Color {
 		//		if u > 0.5 || v > 0.5 {
 		//		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
@@ -192,19 +199,19 @@ func (k3 Kite3) Intersect(r R3) (bool, color.Color, P3, P3) {
 	// z-ordering
 	hit, u, v, p := k3.TA.IntersectUV(r)
 	if hit {
-		return hit, uvToColor(u, v), p, k3.TA.normal()
+		return hit, Hit{p, k3.TA.normal(), uvToColor(u, v)}
 	}
 	hit, u, v, p = k3.TB.IntersectUV(r)
 	if hit {
-		return hit, uvToColor(u, v), p, k3.TB.normal()
+		return hit, Hit{p, k3.TB.normal(), uvToColor(u, v)}
 	}
-	return false, nil, Origin, Origin
+	return false, Hit{}
 }
 
 // An Item is something visible which can be added to a scene
 type Item interface {
-	ZFront() float64
-	Intersect(r R3) (bool, color.Color, P3, P3)
+	ZMin() float64
+	Intersect(r R3) (bool, Hit)
 }
 
 // An ItemSource is an object which knows how to decompose itself
@@ -222,7 +229,7 @@ func (isa itemSlice) Len() int {
 }
 func (isa itemSlice) Less(i, j int) bool {
 	is := []Item(isa)
-	return is[i].ZFront() < is[j].ZFront()
+	return is[i].ZMin() < is[j].ZMin()
 }
 func (isa itemSlice) Swap(i, j int) {
 	is := []Item(isa)
@@ -251,16 +258,15 @@ func New(viewerDist float64, screenDist float64) *Scene {
 	}
 }
 
-func (s *Scene) illumination(c color.Color, pos P3, normal P3) color.Color {
-
+func (s *Scene) illumination(hit Hit) color.Color {
 	// In the range 0->0xffff
-	r, g, b, _ := c.RGBA()
+	r, g, b, _ := hit.Colour.RGBA()
 
 	incidence := 0.0
 	for _, light := range s.lights {
 		// TODO: check intersection with other scene items for shadows
-		vlight := pos.Sub(light.At)
-		incidence += math.Abs(vlight.Dot(normal) / vlight.Len() / normal.Len())
+		vlight := hit.At.Sub(light.At)
+		incidence += math.Abs(vlight.Dot(hit.Normal) / vlight.Len() / hit.Normal.Len())
 		// TODO incorporate color of the light
 	}
 
@@ -277,13 +283,26 @@ func (s *Scene) Render(x, y float64) color.Color {
 		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
 		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
 	}
+
+	var hits []Hit
 	for _, item := range s.sortedItems {
-		intersects, colour, position, normal := item.Intersect(ray)
+		intersects, h := item.Intersect(ray)
 		if intersects {
-			return s.illumination(colour, position, normal)
+			hits = append(hits, h)
 		}
 	}
-	return s.ambient(ray)
+
+	if len(hits) == 0 {
+		return s.ambient(ray)
+	}
+
+	nearestHit := hits[0]
+	for _, h := range hits {
+		if h.At.Len() < nearestHit.At.Len() {
+			nearestHit = h
+		}
+	}
+	return s.illumination(nearestHit)
 }
 
 func (s *Scene) ambient(r R3) color.Color {
@@ -434,9 +453,10 @@ func MakeScene() *Scene {
 
 		scene.Add(t)
 	*/
-	//	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5)
+	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5)
+	scene.AddItems(torus)
 	ppiped := PPiped{
-		Corner: P3{0, 0, 0},
+		Corner: P3{-10, 0, 0},
 		E1:     P3{2, 2, 2},
 		E2:     P3{1, -10, 0},
 		E3:     P3{-10, -3, 2},
