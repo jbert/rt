@@ -163,16 +163,18 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64, P3) {
 // Kite3 is a 2d kite
 type Kite3 struct {
 	TA, TB T3
+	Image  image.Image
 }
 
 // NewKite3 returns a kite with opposite corners A and B, and C+C' (C' reflected in AB)
-func NewKite3(A, B, C P3) *Kite3 {
+func NewKite3(A, B, C P3, img image.Image) *Kite3 {
 	CA := A.Sub(C)
 	CB := B.Sub(C)
 	C2 := C.Add(CA).Add(CB)
 	return &Kite3{
-		TA: T3{A, B, C},
-		TB: T3{A, B, C2},
+		TA:    T3{A, B, C},
+		TB:    T3{A, B, C2},
+		Image: img,
 	}
 }
 
@@ -190,7 +192,8 @@ func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 	uvToColor := func(u, v float64) color.Color {
 		//		if u > 0.5 || v > 0.5 {
 		//		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
-		return color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+		//return color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+		return k3.Image.At(0, 0)
 		//		}
 		//		return color.Black
 	}
@@ -334,11 +337,12 @@ type Torus struct {
 	axis      P3
 	radius    float64
 	thickness float64
+	image     image.Image
 }
 
 // NewTorus constructs a Torus
-func NewTorus(centre P3, axis P3, radius float64, thickness float64) *Torus {
-	return &Torus{centre: centre, axis: axis.Normalise(), radius: radius, thickness: thickness}
+func NewTorus(centre P3, axis P3, radius float64, thickness float64, img image.Image) *Torus {
+	return &Torus{centre: centre, axis: axis.Normalise(), radius: radius, thickness: thickness, image: img}
 }
 
 // Circle is a helper type which can calculate points on its circumference
@@ -388,10 +392,10 @@ func (d *Torus) Items() []Item {
 		grid[i] = minorCircle.Points(numMinorSteps)
 	}
 
-	return gridToKites(grid)
+	return gridToKites(grid, d.image)
 }
 
-func gridToKites(grid [][]P3) []Item {
+func gridToKites(grid [][]P3, img image.Image) []Item {
 
 	var items []Item
 
@@ -401,7 +405,7 @@ func gridToKites(grid [][]P3) []Item {
 		row := grid[i]
 		next := grid[(i+1)%numRows]
 		for j := range row {
-			items = append(items, NewKite3(row[j], next[(j+1)%numCols], row[(j+1)%numCols]))
+			items = append(items, NewKite3(row[j], next[(j+1)%numCols], row[(j+1)%numCols], img))
 		}
 	}
 
@@ -412,6 +416,7 @@ func gridToKites(grid [][]P3) []Item {
 type PPiped struct {
 	Corner     P3
 	E1, E2, E3 P3
+	Image      image.Image
 }
 
 // Items returns a set of items to represent the PPiped
@@ -420,15 +425,15 @@ func (ppp PPiped) Items() []Item {
 
 	blf := ppp.Corner
 
-	items = append(items, NewKite3(blf, blf.Add(ppp.E1).Add(ppp.E2), blf.Add(ppp.E1)))
-	items = append(items, NewKite3(blf, blf.Add(ppp.E2).Add(ppp.E3), blf.Add(ppp.E2)))
-	items = append(items, NewKite3(blf, blf.Add(ppp.E3).Add(ppp.E1), blf.Add(ppp.E3)))
+	items = append(items, NewKite3(blf, blf.Add(ppp.E1).Add(ppp.E2), blf.Add(ppp.E1), ppp.Image))
+	items = append(items, NewKite3(blf, blf.Add(ppp.E2).Add(ppp.E3), blf.Add(ppp.E2), ppp.Image))
+	items = append(items, NewKite3(blf, blf.Add(ppp.E3).Add(ppp.E1), blf.Add(ppp.E3), ppp.Image))
 
 	trb := ppp.Corner.Add(ppp.E1).Add(ppp.E2).Add(ppp.E3)
 
-	items = append(items, NewKite3(trb, trb.Sub(ppp.E1).Sub(ppp.E2), trb.Sub(ppp.E1)))
-	items = append(items, NewKite3(trb, trb.Sub(ppp.E2).Sub(ppp.E3), trb.Sub(ppp.E2)))
-	items = append(items, NewKite3(trb, trb.Sub(ppp.E3).Sub(ppp.E1), trb.Sub(ppp.E3)))
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E1).Sub(ppp.E2), trb.Sub(ppp.E1), ppp.Image))
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E2).Sub(ppp.E3), trb.Sub(ppp.E2), ppp.Image))
+	items = append(items, NewKite3(trb, trb.Sub(ppp.E3).Sub(ppp.E1), trb.Sub(ppp.E3), ppp.Image))
 
 	return items
 }
@@ -446,13 +451,17 @@ func MakeScene() *Scene {
 
 		scene.Add(t)
 	*/
-	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5)
+	red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	blue := color.NRGBA{R: 0, G: 0, B: 128, A: 255}
+
+	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5, image.NewUniform(blue))
 	scene.AddItems(torus)
 	ppiped := PPiped{
 		Corner: P3{-10, 0, 0},
 		E1:     P3{2, 2, 2},
 		E2:     P3{1, -10, 0},
 		E3:     P3{-10, -3, 2},
+		Image:  image.NewUniform(red),
 	}
 	scene.AddItems(ppiped)
 	scene.AddLight(Light{At: P3{-50, 50, 50}, Colour: color.White})
