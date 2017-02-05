@@ -129,7 +129,8 @@ func (t3 T3) Intersect(r R3) (bool, color.Color) {
 	t := e2.Dot(Q) * invDet
 	if t > Epsilon {
 		// Bingo
-		return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+		// u and v are the AB and AC co-ordinates and sum to 1
+		return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}
 	}
 	return false, nil
 }
@@ -298,7 +299,7 @@ func (c *Circle) Points(steps int) []P3 {
 func (d *Disc) Items() []Item {
 	var items []Item
 
-	numSteps := 5
+	numSteps := 10
 	innerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner}
 	innerPoints := innerCircle.Points(numSteps)
 	outerCircle := Circle{centre: d.centre, axis: d.axis, radius: d.inner + d.thickness}
