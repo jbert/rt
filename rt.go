@@ -372,44 +372,37 @@ func (c *Circle) Points(steps int) []P3 {
 
 // Items returns a set of items to represent the Torus
 func (d *Torus) Items() []Item {
-	var items []Item
-
-	numMajorSteps := 16
+	numMajorSteps := 32
 	numMinorSteps := 8
 	circle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
+
 	pts := circle.Points(numMajorSteps)
+
+	grid := make([][]P3, numMajorSteps)
 
 	for i := 0; i < numMajorSteps; i++ {
 		pt := pts[i]
 		rv := pt.Sub(d.centre).Normalise()
 		interiorAxis := rv.Cross(d.axis)
 		minorCircle := Circle{centre: pt, axis: interiorAxis, radius: d.thickness / 2}
-		pts := minorCircle.Points(numMinorSteps)
+		grid[i] = minorCircle.Points(numMinorSteps)
+	}
 
-		nextPt := pts[(i+1)%numMinorSteps]
-		nextRv := nextPt.Sub(d.centre).Normalise()
-		nextAxis := nextRv.Cross(d.axis)
-		nextMinorCircle := Circle{centre: nextPt, axis: nextAxis, radius: d.thickness / 2}
-		nextPts := nextMinorCircle.Points(numMinorSteps)
+	return gridToKites(grid)
+}
 
-		for j := 0; j < numMinorSteps; j++ {
-			k := NewKite3(pts[j], nextPts[(j+1)%numMinorSteps], pts[(j+1)%numMinorSteps])
-			items = append(items, k)
+func gridToKites(grid [][]P3) []Item {
+
+	var items []Item
+
+	numRows := len(grid)
+	numCols := len(grid[0])
+	for i := range grid {
+		row := grid[i]
+		next := grid[(i+1)%numRows]
+		for j := range row {
+			items = append(items, NewKite3(row[j], next[(j+1)%numCols], row[(j+1)%numCols]))
 		}
-
-		/*
-			av := d.axis.Scale(d.thickness)
-
-			nextPt := pts[(i+1)%numSteps]
-			//		nextRv := nextPt.Sub(d.centre)
-
-			//		k := NewKite3(circle[i], outerPoints[i].Add(d.axis.Scale(d.thickness)), outerPoints[i])
-			items = append(items, NewKite3(pt.Add(rv), nextPt.Add(av), pt.Add(av)))
-			items = append(items, NewKite3(pt.Add(av), nextPt.Sub(rv), pt.Sub(rv)))
-			items = append(items, NewKite3(pt.Sub(rv), nextPt.Sub(av), pt.Sub(av)))
-			items = append(items, NewKite3(pt.Sub(av), nextPt.Add(rv), pt.Add(rv)))
-		*/
-
 	}
 
 	return items
