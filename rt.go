@@ -474,7 +474,9 @@ func MakeScene() *Scene {
 	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5, image.NewUniform(blue))
 	scene.AddItems(torus)
 
-	// red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+	scene.AddItems(NewTorus(P3{X: 10, Y: 0, Z: 100}, P3{X: 1, Y: -1, Z: 1}, 40, 10, image.NewUniform(red)))
+
 	//	ppImg := image.NewUniform(red),
 	ppImg := zac
 	ppiped := PPiped{
