@@ -92,18 +92,27 @@ func (t3 T3) ZFront() float64 {
 	return z
 }
 
-// Intersect returns whether a ray intersects this triangle
-func (t3 T3) Intersect(r R3) (bool, color.Color) {
-	hit, u, v := t3.IntersectUV(r)
+func (t3 T3) normal() P3 {
+	// Triangle edges sharing A
+	e1 := t3.B.Sub(t3.A)
+	e2 := t3.C.Sub(t3.A)
+	return e1.Cross(e2)
+}
+
+// Intersect returns whether a ray intersects this triangle (and if so, the colour, position and normal)
+func (t3 T3) Intersect(r R3) (bool, color.Color, P3, P3) {
+	//	hit, u, v, p := t3.IntersectUV(r)
+	hit, _, _, p := t3.IntersectUV(r)
 	if !hit {
-		return false, nil
+		return false, nil, Origin, Origin
 	}
-	return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}
+	//	return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}, p, t3.normal()
+	return true, color.NRGBA{R: 128, G: 0, B: 0, A: 255}, p, t3.normal()
 }
 
 // IntersectUV returns true/false for an intercept
-// and the the U-V co-ords in the triangle if true
-func (t3 T3) IntersectUV(r R3) (bool, float64, float64) {
+// and the the U-V co-ords in the triangle if true (and position)
+func (t3 T3) IntersectUV(r R3) (bool, float64, float64, P3) {
 	// Triangle edges sharing A
 	e1 := t3.B.Sub(t3.A)
 	e2 := t3.C.Sub(t3.A)
@@ -114,7 +123,7 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64) {
 	det := P.Dot(e1)
 	if math.Abs(det) < Epsilon {
 		// Parallel
-		return false, 0, 0
+		return false, 0, 0, Origin
 	}
 	invDet := 1.0 / det
 	//calculate distance from A to ray origin
@@ -124,7 +133,7 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64) {
 	u := T.Dot(P) * invDet
 	//The intersection lies outside of the triangle
 	if u < 0 || u > 1 {
-		return false, 0, 0
+		return false, 0, 0, Origin
 	}
 	//Prepare to test v parameter
 	Q := T.Cross(e1)
@@ -133,16 +142,16 @@ func (t3 T3) IntersectUV(r R3) (bool, float64, float64) {
 	v := r.Dir.Dot(Q) * invDet
 	//The intersection lies outside of the triangle
 	if v < 0 || u+v > 1 {
-		return false, 0, 0
+		return false, 0, 0, Origin
 	}
 
 	t := e2.Dot(Q) * invDet
 	if t > Epsilon {
 		// Bingo
 		// u and v are the AB and AC co-ordinates and sum to 1
-		return true, u, v
+		return true, u, v, t3.A.Add(e1.Scale(u)).Add(e2.Scale(v))
 	}
-	return false, 0, 0
+	return false, 0, 0, Origin
 }
 
 // Kite3 is a 2d kite
@@ -171,32 +180,32 @@ func (k3 Kite3) ZFront() float64 {
 }
 
 // Intersect returns whether a ray intersects this kite
-func (k3 Kite3) Intersect(r R3) (bool, color.Color) {
+func (k3 Kite3) Intersect(r R3) (bool, color.Color, P3, P3) {
 	uvToColor := func(u, v float64) color.Color {
-		if u > 0.5 || v > 0.5 {
-			return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
-		} else {
-			return color.Black
-		}
+		//		if u > 0.5 || v > 0.5 {
+		//		return color.NRGBA{R: uint8(u * 255), G: 0, B: uint8(v * 255), A: 255}
+		return color.NRGBA{R: 128, G: 0, B: 0, A: 255}
+		//		}
+		//		return color.Black
 	}
 
 	// Should only hit one triangle, so don't need to consider
 	// z-ordering
-	hit, u, v := k3.TA.IntersectUV(r)
+	hit, u, v, p := k3.TA.IntersectUV(r)
 	if hit {
-		return hit, uvToColor(u, v)
+		return hit, uvToColor(u, v), p, k3.TA.normal()
 	}
-	hit, u, v = k3.TB.IntersectUV(r)
+	hit, u, v, p = k3.TB.IntersectUV(r)
 	if hit {
-		return hit, uvToColor(u, v)
+		return hit, uvToColor(u, v), p, k3.TB.normal()
 	}
-	return false, nil
+	return false, nil, Origin, Origin
 }
 
 // An Item is something visible which can be added to a scene
 type Item interface {
 	ZFront() float64
-	Intersect(r R3) (bool, color.Color)
+	Intersect(r R3) (bool, color.Color, P3, P3)
 }
 
 // An ItemSource is an object which knows how to decompose itself
@@ -226,6 +235,13 @@ type Scene struct {
 	viewerDist  float64
 	screenDist  float64
 	sortedItems []Item
+	lights      []Light
+}
+
+// Light represents a light source
+type Light struct {
+	At     P3
+	Colour color.Color
 }
 
 // New returns a new Scene
@@ -236,7 +252,25 @@ func New(viewerDist float64, screenDist float64) *Scene {
 	}
 }
 
-var hits int
+func (s *Scene) illumination(c color.Color, pos P3, normal P3) color.Color {
+
+	// In the range 0->0xffff
+	r, g, b, _ := c.RGBA()
+
+	incidence := 0.0
+	for _, light := range s.lights {
+		// TODO: check intersection with other scene items for shadows
+		vlight := pos.Sub(light.At)
+		incidence += math.Abs(vlight.Dot(normal) / vlight.Len() / normal.Len())
+		// TODO incorporate color of the light
+	}
+
+	incidence /= float64(len(s.lights))
+	//	fmt.Printf("incidence %f\n", incidence)
+
+	toUint := func(v uint32) uint8 { return uint8(float64(v) * incidence / 0xffff * 256) }
+	return color.NRGBA{R: toUint(r), G: toUint(g), B: toUint(b), A: 255}
+}
 
 // Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> 0, 0)
 func (s *Scene) Render(x, y float64) color.Color {
@@ -245,10 +279,9 @@ func (s *Scene) Render(x, y float64) color.Color {
 		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
 	}
 	for _, item := range s.sortedItems {
-		intersects, colour := item.Intersect(ray)
+		intersects, colour, position, normal := item.Intersect(ray)
 		if intersects {
-			hits++
-			return colour
+			return s.illumination(colour, position, normal)
 		}
 	}
 	return s.ambient(ray)
@@ -259,8 +292,8 @@ func (s *Scene) ambient(r R3) color.Color {
 	return color.NRGBA{R: 0, G: 0, B: 0, A: 255}
 }
 
-// Add an item to the Scene
-func (s *Scene) Add(i Item) {
+// AddItem adds an item to the Scene
+func (s *Scene) AddItem(i Item) {
 	s.sortedItems = append(s.sortedItems, i)
 	sort.Sort(itemSlice(s.sortedItems))
 }
@@ -268,8 +301,13 @@ func (s *Scene) Add(i Item) {
 // AddItems asks an ItemSource for the items it wants to add to the scene
 func (s *Scene) AddItems(is ItemSource) {
 	for _, i := range is.Items() {
-		s.Add(i)
+		s.AddItem(i)
 	}
+}
+
+// AddLight adds a light to the scene
+func (s *Scene) AddLight(l Light) {
+	s.lights = append(s.lights, l)
 }
 
 // Torus is an ItemSource
@@ -357,6 +395,7 @@ func MakeScene() *Scene {
 	*/
 	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 15, 3)
 	scene.AddItems(torus)
+	scene.AddLight(Light{At: P3{-50, 50, 50}, Colour: color.White})
 
 	return scene
 }
@@ -378,7 +417,6 @@ func main() {
 			i.Set(x, y, colour)
 		}
 	}
-	fmt.Printf("HITS %d\n", hits)
 
 	fname := "tt.png"
 	f, err := os.Create(fname)
