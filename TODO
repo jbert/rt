@@ -1,0 +1,26 @@
+- optimisation
+    - XY Bounding box of some kind (solid angle?)
+    - add some x/y boxing (Quadtree?) to cull items when tracing
+    DONE - drop z-sorting
+    - if we add bounding boxes, can we "super bound" higher level Items (like torus)
+        - nested items, we hit the box, we look at the items in that box etc
+
+    Each item can optionally have a "covering"
+        - nil implies we always hit it at that level
+        - allows complex objects to only be considered
+
+DONE - change colour of T3s / Kites?
+
+DONE - want generic images on Kite3s
+    - need uv?
+    - accurate co-ords
+
+- do some profiling
+
+- add some shadows
+
+- add a sphere
+
+- add specular highlights?
+
+- add reflections?
