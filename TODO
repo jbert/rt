@@ -8,6 +8,7 @@
     Each item can optionally have a "covering"
         - nil implies we always hit it at that level
         - allows complex objects to only be considered
+        - need to maintain itemlist structure (rather than itemSource stuff into main list)
 
 DONE - change colour of T3s / Kites?
 

@@ -245,7 +245,7 @@ func (s *Scene) illumination(hit Hit) color.Color {
 	return color.NRGBA{R: toUint(r), G: toUint(g), B: toUint(b), A: 255}
 }
 
-// Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> 0, 0)
+// Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> +1, +1)
 func (s *Scene) Render(x, y float64) color.Color {
 	ray := R3{
 		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
