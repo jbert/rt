@@ -8,7 +8,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"sort"
 )
 
 // P3 is a 3d point
@@ -77,18 +76,6 @@ type R3 struct {
 // T3 is a 3d triangle
 type T3 struct {
 	A, B, C P3
-}
-
-// ZMin is the nearest part of the item to Z
-func (t3 T3) ZMin() float64 {
-	z := t3.A.Z
-	if t3.B.Z < z {
-		z = t3.B.Z
-	}
-	if t3.C.Z < z {
-		z = t3.C.Z
-	}
-	return z
 }
 
 func (t3 T3) normal() P3 {
@@ -178,15 +165,6 @@ func NewKite3(A, B, C P3, img image.Image) *Kite3 {
 	}
 }
 
-// ZMin is the nearest part of the item to Z
-func (k3 Kite3) ZMin() float64 {
-	z := k3.TA.ZMin()
-	if k3.TB.ZMin() < z {
-		z = k3.TB.ZMin()
-	}
-	return z
-}
-
 // Intersect returns whether a ray intersects this kite
 func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 	bounds := k3.Image.Bounds()
@@ -221,7 +199,6 @@ func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 
 // An Item is something visible which can be added to a scene
 type Item interface {
-	ZMin() float64
 	Intersect(r R3) (bool, Hit)
 }
 
@@ -231,28 +208,12 @@ type ItemSource interface {
 	Items() []Item
 }
 
-// Sorting interface crud
-type itemSlice []Item
-
-func (isa itemSlice) Len() int {
-	is := []Item(isa)
-	return len(is)
-}
-func (isa itemSlice) Less(i, j int) bool {
-	is := []Item(isa)
-	return is[i].ZMin() < is[j].ZMin()
-}
-func (isa itemSlice) Swap(i, j int) {
-	is := []Item(isa)
-	is[i], is[j] = is[j], is[i]
-}
-
 // Scene contains the items, lighting and viewport
 type Scene struct {
-	viewerDist  float64
-	screenDist  float64
-	sortedItems []Item
-	lights      []Light
+	viewerDist float64
+	screenDist float64
+	items      []Item
+	lights     []Light
 }
 
 // Light represents a light source
@@ -296,7 +257,7 @@ func (s *Scene) Render(x, y float64) color.Color {
 	}
 
 	var hits []Hit
-	for _, item := range s.sortedItems {
+	for _, item := range s.items {
 		intersects, h := item.Intersect(ray)
 		if intersects {
 			hits = append(hits, h)
@@ -323,8 +284,7 @@ func (s *Scene) ambient(r R3) color.Color {
 
 // AddItem adds an item to the Scene
 func (s *Scene) AddItem(i Item) {
-	s.sortedItems = append(s.sortedItems, i)
-	sort.Sort(itemSlice(s.sortedItems))
+	s.items = append(s.items, i)
 }
 
 // AddItems asks an ItemSource for the items it wants to add to the scene
