@@ -1,13 +1,9 @@
-package main
+package rt
 
 import (
 	"image"
 	"image/color"
-	"image/draw"
-	"image/png"
-	"log"
 	"math"
-	"os"
 )
 
 // P3 is a 3d point
@@ -404,77 +400,4 @@ func (ppp PPiped) Items() []Item {
 	items = append(items, NewKite3(trb, trb.Sub(ppp.E3).Sub(ppp.E1), trb.Sub(ppp.E3), ppp.Image))
 
 	return items
-}
-
-// MakeScene constructs our test scene
-func MakeScene() *Scene {
-	scene := New(-100, 5)
-
-	f, err := os.Open("zac.png")
-	if err != nil {
-		log.Fatalf("Failed to open zac png")
-	}
-	defer f.Close()
-	zac, err := png.Decode(f)
-	if err != nil {
-		log.Fatalf("Failed to decode zac png")
-	}
-	defer f.Close()
-
-	/*
-		t := T3{
-			A: P3{X: 0, Y: 0, Z: 0},
-			B: P3{X: 10, Y: 0, Z: 0},
-			C: P3{X: 0, Y: 10, Z: 0},
-		}
-
-		scene.Add(t)
-	*/
-	blue := color.NRGBA{R: 0, G: 0, B: 128, A: 255}
-	torus := NewTorus(P3{X: 0, Y: 0, Z: 100}, P3{X: 1, Y: 1, Z: 1}, 30, 5, image.NewUniform(blue))
-	scene.AddItems(torus)
-
-	red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
-	scene.AddItems(NewTorus(P3{X: 10, Y: 0, Z: 100}, P3{X: 1, Y: -1, Z: 1}, 40, 10, image.NewUniform(red)))
-
-	//	ppImg := image.NewUniform(red),
-	ppImg := zac
-	ppiped := PPiped{
-		Corner: P3{-10, 0, 0},
-		E1:     P3{2, 2, 2},
-		E2:     P3{1, -10, 0},
-		E3:     P3{-10, -3, 2},
-		Image:  ppImg,
-	}
-	scene.AddItems(ppiped)
-	scene.AddLight(Light{At: P3{-50, 50, 50}, Colour: color.White})
-
-	return scene
-}
-
-func main() {
-	width := 500
-	height := 500
-	screenSize := image.Rect(0, 0, width, height)
-	i := image.NewRGBA(screenSize)
-	draw.Draw(i, screenSize, image.White, image.Point{}, draw.Over)
-
-	scene := MakeScene()
-
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
-			xf := float64(x)/float64(width)*2 - 1.0
-			yf := float64(y)/float64(height)*2 - 1.0
-			colour := scene.Render(xf, yf)
-			i.Set(x, y, colour)
-		}
-	}
-
-	fname := "tt.png"
-	f, err := os.Create(fname)
-	if err != nil {
-		log.Fatalf("Can't open %s: %s", fname, err)
-	}
-	defer f.Close()
-	png.Encode(f, i)
 }
