@@ -40,19 +40,19 @@ func main() {
 
 	scene := MakeScene()
 
-	var totalIntersections int64
+	var totalTests int64
 	before := time.Now()
 	for x := 0; x < width; x++ {
 		for y := 0; y < height; y++ {
 			xf := float64(x)/float64(width)*2 - 1.0
 			yf := float64(y)/float64(height)*2 - 1.0
-			colour, numIntersections := scene.Render(xf, yf)
+			colour, numTests := scene.Render(xf, yf)
 			i.Set(x, y, colour)
-			totalIntersections += numIntersections
+			totalTests += numTests
 		}
 	}
 	dur := time.Since(before)
-	fmt.Printf("%d Intersections in %s: %f ints/sec\n", totalIntersections, dur, float64(totalIntersections)/dur.Seconds())
+	fmt.Printf("%d tests in %s: %f ints/sec\n", totalTests, dur, float64(totalTests)/dur.Seconds())
 
 	fname := "tt.png"
 	f, err := os.Create(fname)
@@ -117,8 +117,8 @@ func MakeScene() *rt.Scene {
 		Image:  ppImg,
 	}
 	ppiped.Build()
-
 	scene.AddItem(&ppiped)
+
 	scene.AddLight(rt.Light{At: rt.P3{-50, 50, 50}, Colour: color.White})
 
 	return scene

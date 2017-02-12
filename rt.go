@@ -89,14 +89,14 @@ type Hit struct {
 }
 
 // Intersect returns whether a ray intersects this triangle (and if so, the colour, position and normal)
-func (t3 T3) Intersect(r R3) (bool, Hit) {
+func (t3 T3) Intersect(r R3) (bool, Hit, int64) {
 	//	hit, u, v, p := t3.IntersectUV(r)
 	hit, _, _, p := t3.IntersectUV(r)
 	if !hit {
-		return false, Hit{}
+		return false, Hit{}, 1
 	}
 	//	return true, color.NRGBA{R: uint8(u * 255), G: uint8(v * 255), B: 0, A: 255}, p, t3.normal()
-	return true, Hit{p, t3.normal(), color.NRGBA{R: 128, G: 0, B: 0, A: 255}}
+	return true, Hit{p, t3.normal(), color.NRGBA{R: 128, G: 0, B: 0, A: 255}}, 1
 }
 
 // IntersectUV returns true/false for an intercept
@@ -162,7 +162,7 @@ func NewKite3(A, B, C P3, img image.Image) *Kite3 {
 }
 
 // Intersect returns whether a ray intersects this kite
-func (k3 Kite3) Intersect(r R3) (bool, Hit) {
+func (k3 Kite3) Intersect(r R3) (bool, Hit, int64) {
 	bounds := k3.Image.Bounds()
 	w := float64(bounds.Max.X - bounds.Min.X)
 	h := float64(bounds.Max.Y - bounds.Min.Y)
@@ -180,22 +180,22 @@ func (k3 Kite3) Intersect(r R3) (bool, Hit) {
 	}
 
 	// Should only hit one triangle, so don't need to consider
-	// z-ordering
+	// z-orderin/
 	hit, u, v, p := k3.TA.IntersectUV(r)
 	if hit {
-		return hit, Hit{p, k3.TA.normal(), uvToColor(u, v)}
+		return hit, Hit{p, k3.TA.normal(), uvToColor(u, v)}, 1
 	}
 	hit, u, v, p = k3.TB.IntersectUV(r)
 	u, v = 1-v, 1-u
 	if hit {
-		return hit, Hit{p, k3.TB.normal(), uvToColor(u, v)}
+		return hit, Hit{p, k3.TB.normal(), uvToColor(u, v)}, 2
 	}
-	return false, Hit{}
+	return false, Hit{}, 2
 }
 
 // An Item is something visible which can be added to a scene
 type Item interface {
-	Intersect(r R3) (bool, Hit)
+	Intersect(r R3) (bool, Hit, int64)
 }
 
 type CompositeItem struct {
@@ -206,20 +206,22 @@ func (ci *CompositeItem) AddItem(i Item) {
 	ci.children = append(ci.children, i)
 }
 
-func (ci *CompositeItem) Intersect(ray R3) (bool, Hit) {
+func (ci *CompositeItem) Intersect(ray R3) (bool, Hit, int64) {
 	var hits []Hit
 	if ci.children == nil {
 		panic("Null children")
 	}
+	var totalTests int64
 	for i := range ci.children {
-		intersects, h := ci.children[i].Intersect(ray)
+		intersects, h, numTests := ci.children[i].Intersect(ray)
+		totalTests += numTests
 		if intersects {
 			hits = append(hits, h)
 		}
 	}
 
 	if len(hits) == 0 {
-		return false, Hit{}
+		return false, Hit{}, totalTests
 	}
 
 	nearestHit := hits[0]
@@ -228,7 +230,7 @@ func (ci *CompositeItem) Intersect(ray R3) (bool, Hit) {
 			nearestHit = h
 		}
 	}
-	return true, nearestHit
+	return true, nearestHit, totalTests
 }
 
 // Scene contains the items, lighting and viewport
@@ -273,20 +275,18 @@ func (s *Scene) illumination(hit Hit) color.Color {
 }
 
 func (s *Scene) Render(x, y float64) (color.Color, int64) {
-	var numIntersections int64
-
 	ray := R3{
 		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
 		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
 	}
 
-	intersects, h := s.Intersect(ray)
+	intersects, h, numTests := s.Intersect(ray)
 
 	if !intersects {
-		return s.ambient(ray), numIntersections
+		return s.ambient(ray), numTests
 	}
 
-	return s.illumination(h), numIntersections
+	return s.illumination(h), numTests
 }
 
 func (s *Scene) ambient(r R3) color.Color {
