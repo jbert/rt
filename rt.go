@@ -246,25 +246,17 @@ func (s *Scene) illumination(hit Hit) color.Color {
 }
 
 // Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> +1, +1)
-func (s *Scene) Render(x, y float64) (color.Color, int64) {
-	var numIntersections int64
-
-	ray := R3{
-		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
-		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
-	}
-
+func (s *Scene) Intersect(ray R3) (bool, Hit) {
 	var hits []Hit
-	for _, item := range s.items {
-		numIntersections++
-		intersects, h := item.Intersect(ray)
+	for i := range s.items {
+		intersects, h := s.items[i].Intersect(ray)
 		if intersects {
 			hits = append(hits, h)
 		}
 	}
 
 	if len(hits) == 0 {
-		return s.ambient(ray), numIntersections
+		return false, Hit{}
 	}
 
 	nearestHit := hits[0]
@@ -273,7 +265,24 @@ func (s *Scene) Render(x, y float64) (color.Color, int64) {
 			nearestHit = h
 		}
 	}
-	return s.illumination(nearestHit), numIntersections
+	return true, nearestHit
+}
+
+func (s *Scene) Render(x, y float64) (color.Color, int64) {
+	var numIntersections int64
+
+	ray := R3{
+		At:  P3{X: 0, Y: 0, Z: s.viewerDist},
+		Dir: P3{X: x / s.screenDist, Y: y / s.screenDist, Z: 1.0},
+	}
+
+	intersects, h := s.Intersect(ray)
+
+	if !intersects {
+		return s.ambient(ray), numIntersections
+	}
+
+	return s.illumination(h), numIntersections
 }
 
 func (s *Scene) ambient(r R3) color.Color {
