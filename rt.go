@@ -198,17 +198,44 @@ type Item interface {
 	Intersect(r R3) (bool, Hit)
 }
 
-// An ItemSource is an object which knows how to decompose itself
-// into items, suitable for adding to the scene
-type ItemSource interface {
-	Items() []Item
+type CompositeItem struct {
+	children []Item
+}
+
+func (ci *CompositeItem) AddItem(i Item) {
+	ci.children = append(ci.children, i)
+}
+
+func (ci *CompositeItem) Intersect(ray R3) (bool, Hit) {
+	var hits []Hit
+	if ci.children == nil {
+		panic("Null children")
+	}
+	for i := range ci.children {
+		intersects, h := ci.children[i].Intersect(ray)
+		if intersects {
+			hits = append(hits, h)
+		}
+	}
+
+	if len(hits) == 0 {
+		return false, Hit{}
+	}
+
+	nearestHit := hits[0]
+	for _, h := range hits {
+		if h.At.Len() < nearestHit.At.Len() {
+			nearestHit = h
+		}
+	}
+	return true, nearestHit
 }
 
 // Scene contains the items, lighting and viewport
 type Scene struct {
+	CompositeItem
 	viewerDist float64
 	screenDist float64
-	items      []Item
 	lights     []Light
 }
 
@@ -245,29 +272,6 @@ func (s *Scene) illumination(hit Hit) color.Color {
 	return color.NRGBA{R: toUint(r), G: toUint(g), B: toUint(b), A: 255}
 }
 
-// Render returns the colour at the x,y co-ords of the viewport (-1, -1 -> +1, +1)
-func (s *Scene) Intersect(ray R3) (bool, Hit) {
-	var hits []Hit
-	for i := range s.items {
-		intersects, h := s.items[i].Intersect(ray)
-		if intersects {
-			hits = append(hits, h)
-		}
-	}
-
-	if len(hits) == 0 {
-		return false, Hit{}
-	}
-
-	nearestHit := hits[0]
-	for _, h := range hits {
-		if h.At.Len() < nearestHit.At.Len() {
-			nearestHit = h
-		}
-	}
-	return true, nearestHit
-}
-
 func (s *Scene) Render(x, y float64) (color.Color, int64) {
 	var numIntersections int64
 
@@ -292,14 +296,7 @@ func (s *Scene) ambient(r R3) color.Color {
 
 // AddItem adds an item to the Scene
 func (s *Scene) AddItem(i Item) {
-	s.items = append(s.items, i)
-}
-
-// AddItems asks an ItemSource for the items it wants to add to the scene
-func (s *Scene) AddItems(is ItemSource) {
-	for _, i := range is.Items() {
-		s.AddItem(i)
-	}
+	s.children = append(s.children, i)
 }
 
 // AddLight adds a light to the scene
@@ -307,8 +304,10 @@ func (s *Scene) AddLight(l Light) {
 	s.lights = append(s.lights, l)
 }
 
-// Torus is an ItemSource
+// Torus is an composite item
 type Torus struct {
+	CompositeItem
+
 	centre    P3
 	axis      P3
 	radius    float64
@@ -318,7 +317,9 @@ type Torus struct {
 
 // NewTorus constructs a Torus
 func NewTorus(centre P3, axis P3, radius float64, thickness float64, img image.Image) *Torus {
-	return &Torus{centre: centre, axis: axis.Normalise(), radius: radius, thickness: thickness, image: img}
+	t := Torus{centre: centre, axis: axis.Normalise(), radius: radius, thickness: thickness, image: img}
+	t.buildItems()
+	return &t
 }
 
 // Circle is a helper type which can calculate points on its circumference
@@ -350,8 +351,8 @@ func (c *Circle) Points(steps int) []P3 {
 	return points
 }
 
-// Items returns a set of items to represent the Torus
-func (d *Torus) Items() []Item {
+// buildItems sets up the child items to represent the Torus
+func (d *Torus) buildItems() {
 	numMajorSteps := 32
 	numMinorSteps := 8
 	circle := Circle{centre: d.centre, axis: d.axis, radius: d.radius}
@@ -368,7 +369,7 @@ func (d *Torus) Items() []Item {
 		grid[i] = minorCircle.Points(numMinorSteps)
 	}
 
-	return gridToKites(grid, d.image)
+	d.children = gridToKites(grid, d.image)
 }
 
 func gridToKites(grid [][]P3, img image.Image) []Item {
@@ -390,13 +391,15 @@ func gridToKites(grid [][]P3, img image.Image) []Item {
 
 // PPiped is a parallelopipd
 type PPiped struct {
+	CompositeItem
+
 	Corner     P3
 	E1, E2, E3 P3
 	Image      image.Image
 }
 
 // Items returns a set of items to represent the PPiped
-func (ppp PPiped) Items() []Item {
+func (ppp *PPiped) Build() {
 	var items []Item
 
 	blf := ppp.Corner
@@ -411,5 +414,5 @@ func (ppp PPiped) Items() []Item {
 	items = append(items, NewKite3(trb, trb.Sub(ppp.E2).Sub(ppp.E3), trb.Sub(ppp.E2), ppp.Image))
 	items = append(items, NewKite3(trb, trb.Sub(ppp.E3).Sub(ppp.E1), trb.Sub(ppp.E3), ppp.Image))
 
-	return items
+	ppp.children = items
 }

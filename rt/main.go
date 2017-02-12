@@ -102,10 +102,10 @@ func MakeScene() *rt.Scene {
 	*/
 	blue := color.NRGBA{R: 0, G: 0, B: 128, A: 255}
 	torus := rt.NewTorus(rt.P3{X: 0, Y: 0, Z: 100}, rt.P3{X: 1, Y: 1, Z: 1}, 30, 5, image.NewUniform(blue))
-	scene.AddItems(torus)
+	scene.AddItem(torus)
 
 	red := color.NRGBA{R: 128, G: 0, B: 0, A: 255}
-	scene.AddItems(rt.NewTorus(rt.P3{X: 10, Y: 0, Z: 100}, rt.P3{X: 1, Y: -1, Z: 1}, 40, 10, image.NewUniform(red)))
+	scene.AddItem(rt.NewTorus(rt.P3{X: 10, Y: 0, Z: 100}, rt.P3{X: 1, Y: -1, Z: 1}, 40, 10, image.NewUniform(red)))
 
 	//	ppImg := image.NewUniform(red),
 	ppImg := zac
@@ -116,7 +116,9 @@ func MakeScene() *rt.Scene {
 		E3:     rt.P3{-10, -3, 2},
 		Image:  ppImg,
 	}
-	scene.AddItems(ppiped)
+	ppiped.Build()
+
+	scene.AddItem(&ppiped)
 	scene.AddLight(rt.Light{At: rt.P3{-50, 50, 50}, Colour: color.White})
 
 	return scene
