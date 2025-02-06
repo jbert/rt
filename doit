@@ -3,5 +3,5 @@ while true
 do
     inotifywait -e close_write . 
     clear
-    golint . && go vet . && go run rt.go 
+    golint . && go vet . && go run rt/main.go 
 done
